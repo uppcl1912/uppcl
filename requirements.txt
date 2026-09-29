@@ -4,4 +4,5 @@ plotly
 openpyxl
 xlsxwriter
 reportlab
-matplotlib
+matplotlib==3.10.7
+pyarrow==24.0.0
