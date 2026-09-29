@@ -826,6 +826,25 @@ def render_dashboard():
             fig.update_layout(title=dict(text=title, font=dict(size=16, color='#F57C00')))
         return fig
 
+    # ---------- ARROW SAFE HELPER ----------
+    def _arrow_safe(df):
+        """
+        Streamlit 1.64 + pyarrow 24 mein mixed-type columns (jaise int + "TOTAL")
+        Arrow serialization error dete hain. Yeh helper har object-dtype column
+        ko string mein force kar deta hai, taaki TOTAL row ke saath bhi
+        dataframe safely render ho jaye.
+        """
+        df = df.copy()
+        for col in df.columns:
+            # Object dtype columns ko string mein convert karo
+            if df[col].dtype == object:
+                df[col] = df[col].astype(str)
+            # Mixed int/str wale numeric columns ko bhi string karo
+            # (jab TOTAL row ki wajah se dtype object ho gayi ho)
+            elif df[col].dtype == "int64" and "TOTAL" in df[col].astype(str).values:
+                df[col] = df[col].astype(str)
+        return df
+
     # ---------- LOAD FILE ----------
     @st.cache_data(show_spinner=False)
     def load_file(file_bytes: bytes, filename: str) -> pd.DataFrame:
@@ -903,14 +922,6 @@ def render_dashboard():
         return df_paid, df_bill
 
     # ---------- SUMMARY HELPERS ----------
-    def _force_str_cols(df, cols):
-        """Arrow serialization error se bachne ke liye: mixed type columns ko str banao."""
-        df = df.copy()
-        for c in cols:
-            if c in df.columns:
-                df[c] = df[c].astype(str)
-        return df
-
     def make_summary(df_paid, df_bill, group_col, order=None):
         if not df_bill.empty and CA_COL in df_bill.columns:
             agg_dict = {
@@ -1002,10 +1013,9 @@ def render_dashboard():
             "Eff %":        total["Efficiency_%"],
             "Turn-up %":    total["Turnup_%"],
         }])
-        # 🛠️ Arrow fix: group_col ko string banao (TOTAL row ke saath mixed type se bachne ke liye)
-        display = _force_str_cols(display, [group_col])
-        totals  = _force_str_cols(totals,  [group_col])
         display_full = pd.concat([display, totals], ignore_index=True)
+        # 🛠️ ARROW FIX — mixed-type columns ko string banao
+        display_full = _arrow_safe(display_full)
 
         col1, col2 = st.columns([1.7, 1])
         with col1:
@@ -1091,8 +1101,6 @@ def render_dashboard():
                      "Total Outstanding (Cr.)", "Paid Count", "Bills", "Eff %", "Turn-up %"]].copy()
         display.columns = ["SDO Name", "SDO Code", "CA (Cr.)", "Paid (Cr.)",
                            "Total Outstanding (Cr.)", "Paid Count", "Bills", "Eff %", "Turn-up %"]
-        # 🛠️ Arrow fix
-        display = _force_str_cols(display, ["SDO Name", "SDO Code"])
 
         tot_ca    = round(s["CA (Cr.)"].sum(), 2)
         tot_paid  = round(s["Paid (Cr.)"].sum(), 2)
@@ -1113,8 +1121,9 @@ def render_dashboard():
             "Eff %":        tot_eff,
             "Turn-up %":    tot_turn,
         }])
-        totals = _force_str_cols(totals, ["SDO Name", "SDO Code"])
         display_full = pd.concat([display, totals], ignore_index=True)
+        # 🛠️ ARROW FIX
+        display_full = _arrow_safe(display_full)
 
         col1, col2 = st.columns([1.7, 1])
         with col1:
@@ -1188,10 +1197,9 @@ def render_dashboard():
             "Bills":       tot_bills,
             "Turn-up %":   tot_turn,
         }])
-        # 🛠️ Arrow fix
-        display = _force_str_cols(display, [group_col])
-        totals  = _force_str_cols(totals,  [group_col])
         display_full = pd.concat([display, totals], ignore_index=True)
+        # 🛠️ ARROW FIX
+        display_full = _arrow_safe(display_full)
 
         col1, col2 = st.columns([1.7, 1])
         with col1:
@@ -1271,8 +1279,6 @@ def render_dashboard():
                      "Eff %", "Paid", "Bills", "Turn-up %"]].copy()
         display.columns = ["SDO Name", "CA (Cr.)", "Paid (Cr.)", "Total Outstanding (Cr.)",
                            "Eff %", "Paid", "Bills", "Turn-up %"]
-        # 🛠️ Arrow fix
-        display = _force_str_cols(display, ["SDO Name"])
 
         tot_ca    = round(s["CA (Cr.)"].sum(), 2)
         tot_paid  = round(s["Paid (Cr.)"].sum(), 2)
@@ -1292,8 +1298,9 @@ def render_dashboard():
             "Bills":        tot_bills,
             "Turn-up %":    tot_turn,
         }])
-        totals = _force_str_cols(totals, ["SDO Name"])
         display_full = pd.concat([display, totals], ignore_index=True)
+        # 🛠️ ARROW FIX
+        display_full = _arrow_safe(display_full)
 
         col1, col2 = st.columns([1.7, 1])
         with col1:
@@ -1938,10 +1945,9 @@ def render_dashboard():
             "Bills":        total_bills,
             "Turn-up %":    total_turn,
         }])
-        # 🛠️ Arrow fix
-        display = _force_str_cols(display, ["SDO"])
-        totals  = _force_str_cols(totals,  ["SDO"])
         display_full = pd.concat([display, totals], ignore_index=True)
+        # 🛠️ ARROW FIX
+        display_full = _arrow_safe(display_full)
 
         st.dataframe(
             display_full.style.format({
@@ -2085,15 +2091,14 @@ def render_dashboard():
         with st.expander("📋 Daily Table + CSV download"):
             show = daily[["_DAY", "Amount_Cr", "Txns"]].copy()
             show.columns = ["Day", "Amount (Cr.)", "Txns"]
-            # 🛠️ Arrow fix: Day ko string banao (TOTAL row ke saath mixed type se bachne ke liye)
-            show["Day"] = show["Day"].astype(str)
             total_row = pd.DataFrame([{
                 "Day": "TOTAL",
                 "Amount (Cr.)": round(show["Amount (Cr.)"].sum(), 2),
                 "Txns": int(show["Txns"].sum()),
             }])
-            total_row = _force_str_cols(total_row, ["Day"])
             show_full = pd.concat([show, total_row], ignore_index=True)
+            # 🛠️ ARROW FIX — Day column ko string banao
+            show_full = _arrow_safe(show_full)
 
             st.dataframe(
                 show_full.style
@@ -2584,16 +2589,15 @@ def render_dashboard():
                 top_show.columns = (["ACCT_ID", "NAME", "Total (Cr.)", "Txns"]
                                     if len(grp) == 2
                                     else ["ACCT_ID", "Total (Cr.)", "Txns"])
-                # 🛠️ Arrow fix
-                top_show = _force_str_cols(top_show, ["ACCT_ID"])
                 total_top = {"ACCT_ID": "TOTAL"}
                 if len(grp) == 2:
                     total_top["NAME"] = ""
                 total_top["Total (Cr.)"] = round(top_show["Total (Cr.)"].sum(), 2)
                 total_top["Txns"] = int(top_show["Txns"].sum())
-                total_top_df = _force_str_cols(pd.DataFrame([total_top]), ["ACCT_ID"])
-                top_show = pd.concat([top_show, total_top_df],
+                top_show = pd.concat([top_show, pd.DataFrame([total_top])],
                                      ignore_index=True)
+                # 🛠️ ARROW FIX
+                top_show = _arrow_safe(top_show)
                 st.dataframe(
                     top_show.style.format({
                         "Total (Cr.)": "₹ {:,.2f}", "Txns": "{:,}"})
@@ -2608,16 +2612,15 @@ def render_dashboard():
                 bot_show.columns = (["ACCT_ID", "NAME", "Total (Cr.)", "Txns"]
                                     if len(grp) == 2
                                     else ["ACCT_ID", "Total (Cr.)", "Txns"])
-                # 🛠️ Arrow fix
-                bot_show = _force_str_cols(bot_show, ["ACCT_ID"])
                 total_bot = {"ACCT_ID": "TOTAL"}
                 if len(grp) == 2:
                     total_bot["NAME"] = ""
                 total_bot["Total (Cr.)"] = round(bot_show["Total (Cr.)"].sum(), 2)
                 total_bot["Txns"] = int(bot_show["Txns"].sum())
-                total_bot_df = _force_str_cols(pd.DataFrame([total_bot]), ["ACCT_ID"])
-                bot_show = pd.concat([bot_show, total_bot_df],
+                bot_show = pd.concat([bot_show, pd.DataFrame([total_bot])],
                                      ignore_index=True)
+                # 🛠️ ARROW FIX
+                bot_show = _arrow_safe(bot_show)
                 st.dataframe(
                     bot_show.style.format({
                         "Total (Cr.)": "₹ {:,.2f}", "Txns": "{:,}"})
@@ -2632,16 +2635,15 @@ def render_dashboard():
                 full_show.columns = (["ACCT_ID", "NAME", "Total (Cr.)", "Txns"]
                                      if len(grp) == 2
                                      else ["ACCT_ID", "Total (Cr.)", "Txns"])
-                # 🛠️ Arrow fix
-                full_show = _force_str_cols(full_show, ["ACCT_ID"])
                 total_all = {"ACCT_ID": "TOTAL"}
                 if len(grp) == 2:
                     total_all["NAME"] = ""
                 total_all["Total (Cr.)"] = round(full_show["Total (Cr.)"].sum(), 2)
                 total_all["Txns"] = int(full_show["Txns"].sum())
-                total_all_df = _force_str_cols(pd.DataFrame([total_all]), ["ACCT_ID"])
-                full_show = pd.concat([full_show, total_all_df],
+                full_show = pd.concat([full_show, pd.DataFrame([total_all])],
                                       ignore_index=True)
+                # 🛠️ ARROW FIX
+                full_show = _arrow_safe(full_show)
                 csv = full_show.to_csv(index=False).encode("utf-8")
                 st.download_button("Consumers CSV", csv,
                                    "consumers.csv", "text/csv", key="dl_cons")
