@@ -1,4 +1,4 @@
-# app.py
+# dashboard.py
 # ============================================================
 # UPPCL TOOLKIT — Single App
 #   Page 1: 🔗 Billed + Unbilled File Merger
@@ -179,7 +179,7 @@ POLE:POLE_NO"""
 
             st.markdown("---")
             st.subheader(f"👀 Preview (First {preview_rows} rows)")
-            st.dataframe(merged_df.head(preview_rows), use_container_width=True)
+            st.dataframe(merged_df.head(preview_rows), width='stretch')
 
             st.markdown("---")
             st.subheader("📊 Merge Summary")
@@ -194,7 +194,7 @@ POLE:POLE_NO"""
 
             dl_col1, dl_col2 = st.columns(2)
             with dl_col1:
-                if st.button("📥 Generate CSV", use_container_width=True, key="mg_gen_csv"):
+                if st.button("📥 Generate CSV", width='stretch', key="mg_gen_csv"):
                     st.session_state["mg_csv_bytes"] = to_csv_bytes(merged_df)
                 if "mg_csv_bytes" in st.session_state:
                     st.download_button(
@@ -202,12 +202,12 @@ POLE:POLE_NO"""
                         data=st.session_state["mg_csv_bytes"],
                         file_name="merged_billed_unbilled.csv",
                         mime="text/csv",
-                        use_container_width=True,
+                        width='stretch',
                         type="primary",
                         key="mg_dl_csv",
                     )
             with dl_col2:
-                if st.button("📥 Generate Excel", use_container_width=True, key="mg_gen_xlsx"):
+                if st.button("📥 Generate Excel", width='stretch', key="mg_gen_xlsx"):
                     with st.spinner("Excel ban raha hai..."):
                         st.session_state["mg_excel_bytes"] = to_excel_bytes(merged_df)
                 if "mg_excel_bytes" in st.session_state:
@@ -216,7 +216,7 @@ POLE:POLE_NO"""
                         data=st.session_state["mg_excel_bytes"],
                         file_name="merged_billed_unbilled.xlsx",
                         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                        use_container_width=True,
+                        width='stretch',
                         key="mg_dl_xlsx",
                     )
         except Exception as e:
@@ -852,8 +852,8 @@ def render_dashboard():
     def prepare(df: pd.DataFrame, merge_tuple: tuple):
         df = df.copy()
 
-        df[DATE_COL]      = pd.to_datetime(df[DATE_COL], errors="coerce")
-        df[BILL_DATE_COL] = pd.to_datetime(df[BILL_DATE_COL], errors="coerce")
+        df[DATE_COL]      = pd.to_datetime(df[DATE_COL], errors="coerce", format="mixed")
+        df[BILL_DATE_COL] = pd.to_datetime(df[BILL_DATE_COL], errors="coerce", format="mixed")
 
         if ARREAR_COL in df.columns:
             df[ARREAR_COL] = pd.to_numeric(df[ARREAR_COL], errors="coerce").fillna(0)
@@ -903,6 +903,14 @@ def render_dashboard():
         return df_paid, df_bill
 
     # ---------- SUMMARY HELPERS ----------
+    def _force_str_cols(df, cols):
+        """Arrow serialization error se bachne ke liye: mixed type columns ko str banao."""
+        df = df.copy()
+        for c in cols:
+            if c in df.columns:
+                df[c] = df[c].astype(str)
+        return df
+
     def make_summary(df_paid, df_bill, group_col, order=None):
         if not df_bill.empty and CA_COL in df_bill.columns:
             agg_dict = {
@@ -994,6 +1002,9 @@ def render_dashboard():
             "Eff %":        total["Efficiency_%"],
             "Turn-up %":    total["Turnup_%"],
         }])
+        # 🛠️ Arrow fix: group_col ko string banao (TOTAL row ke saath mixed type se bachne ke liye)
+        display = _force_str_cols(display, [group_col])
+        totals  = _force_str_cols(totals,  [group_col])
         display_full = pd.concat([display, totals], ignore_index=True)
 
         col1, col2 = st.columns([1.7, 1])
@@ -1015,7 +1026,7 @@ def render_dashboard():
                                        cmap=EFFICIENCY_CMAP, vmin=0, vmax=100)
                   .background_gradient(subset=["Turn-up %"],
                                        cmap=TURNUP_CMAP, vmin=0, vmax=100),
-                use_container_width=True, hide_index=True, height=400
+                width='stretch', hide_index=True, height=400
             )
         with col2:
             if chart and not s.empty:
@@ -1027,7 +1038,7 @@ def render_dashboard():
                                   yaxis_title="Turn-up %",
                                   coloraxis_showscale=False)
                 apply_theme(fig, height=400)
-                st.plotly_chart(fig, use_container_width=True, key=f"bar_{key}")
+                st.plotly_chart(fig, width='stretch', key=f"bar_{key}")
         return s
 
     def show_sdo_name_table(df_paid, df_bill, key="sdo"):
@@ -1077,9 +1088,11 @@ def render_dashboard():
 
         s = s.sort_values("Paid (Cr.)", ascending=False)
         display = s[[SDO_NAME_COL, SDO_CODE_COL, "CA (Cr.)", "Paid (Cr.)",
-                     "Total Outstanding (Cr.)", "Paid Count", "Bills", "Eff %", "Turn-up %"]]
+                     "Total Outstanding (Cr.)", "Paid Count", "Bills", "Eff %", "Turn-up %"]].copy()
         display.columns = ["SDO Name", "SDO Code", "CA (Cr.)", "Paid (Cr.)",
                            "Total Outstanding (Cr.)", "Paid Count", "Bills", "Eff %", "Turn-up %"]
+        # 🛠️ Arrow fix
+        display = _force_str_cols(display, ["SDO Name", "SDO Code"])
 
         tot_ca    = round(s["CA (Cr.)"].sum(), 2)
         tot_paid  = round(s["Paid (Cr.)"].sum(), 2)
@@ -1100,6 +1113,7 @@ def render_dashboard():
             "Eff %":        tot_eff,
             "Turn-up %":    tot_turn,
         }])
+        totals = _force_str_cols(totals, ["SDO Name", "SDO Code"])
         display_full = pd.concat([display, totals], ignore_index=True)
 
         col1, col2 = st.columns([1.7, 1])
@@ -1121,7 +1135,7 @@ def render_dashboard():
                                        cmap=EFFICIENCY_CMAP, vmin=0, vmax=100)
                   .background_gradient(subset=["Turn-up %"],
                                        cmap=TURNUP_CMAP, vmin=0, vmax=100),
-                use_container_width=True, hide_index=True, height=400
+                width='stretch', hide_index=True, height=400
             )
         with col2:
             if not s.empty:
@@ -1133,7 +1147,7 @@ def render_dashboard():
                                   yaxis_title="Turn-up %",
                                   coloraxis_showscale=False)
                 apply_theme(fig, height=400)
-                st.plotly_chart(fig, use_container_width=True, key=f"bar_{key}")
+                st.plotly_chart(fig, width='stretch', key=f"bar_{key}")
         return s
 
     def show_efficiency_table(df_paid, df_bill, group_col, title, key,
@@ -1174,6 +1188,9 @@ def render_dashboard():
             "Bills":       tot_bills,
             "Turn-up %":   tot_turn,
         }])
+        # 🛠️ Arrow fix
+        display = _force_str_cols(display, [group_col])
+        totals  = _force_str_cols(totals,  [group_col])
         display_full = pd.concat([display, totals], ignore_index=True)
 
         col1, col2 = st.columns([1.7, 1])
@@ -1195,7 +1212,7 @@ def render_dashboard():
                                        cmap=EFFICIENCY_CMAP, vmin=0, vmax=100)
                   .background_gradient(subset=["Turn-up %"],
                                        cmap=TURNUP_CMAP, vmin=0, vmax=100),
-                use_container_width=True, hide_index=True, height=400
+                width='stretch', hide_index=True, height=400
             )
         with col2:
             if not s.empty:
@@ -1207,7 +1224,7 @@ def render_dashboard():
                                   yaxis_title="Efficiency %",
                                   coloraxis_showscale=False)
                 apply_theme(fig, height=400)
-                st.plotly_chart(fig, use_container_width=True, key=f"eff_{key}")
+                st.plotly_chart(fig, width='stretch', key=f"eff_{key}")
         return s
 
     def show_sdo_efficiency_table(df_paid, df_bill, key="eff_sdo"):
@@ -1251,9 +1268,11 @@ def render_dashboard():
         s = s.sort_values("Paid (Cr.)", ascending=False)
 
         display = s[[SDO_NAME_COL, "CA (Cr.)", "Paid (Cr.)", "Total Outstanding (Cr.)",
-                     "Eff %", "Paid", "Bills", "Turn-up %"]]
+                     "Eff %", "Paid", "Bills", "Turn-up %"]].copy()
         display.columns = ["SDO Name", "CA (Cr.)", "Paid (Cr.)", "Total Outstanding (Cr.)",
                            "Eff %", "Paid", "Bills", "Turn-up %"]
+        # 🛠️ Arrow fix
+        display = _force_str_cols(display, ["SDO Name"])
 
         tot_ca    = round(s["CA (Cr.)"].sum(), 2)
         tot_paid  = round(s["Paid (Cr.)"].sum(), 2)
@@ -1273,6 +1292,7 @@ def render_dashboard():
             "Bills":        tot_bills,
             "Turn-up %":    tot_turn,
         }])
+        totals = _force_str_cols(totals, ["SDO Name"])
         display_full = pd.concat([display, totals], ignore_index=True)
 
         col1, col2 = st.columns([1.7, 1])
@@ -1294,7 +1314,7 @@ def render_dashboard():
                                        cmap=EFFICIENCY_CMAP, vmin=0, vmax=100)
                   .background_gradient(subset=["Turn-up %"],
                                        cmap=TURNUP_CMAP, vmin=0, vmax=100),
-                use_container_width=True, hide_index=True, height=400
+                width='stretch', hide_index=True, height=400
             )
         with col2:
             if not s.empty:
@@ -1306,7 +1326,7 @@ def render_dashboard():
                                   yaxis_title="Efficiency %",
                                   coloraxis_showscale=False)
                 apply_theme(fig, height=400)
-                st.plotly_chart(fig, use_container_width=True, key=f"eff_{key}")
+                st.plotly_chart(fig, width='stretch', key=f"eff_{key}")
         return s
 
     # ---------- EXCEL ----------
@@ -1918,6 +1938,9 @@ def render_dashboard():
             "Bills":        total_bills,
             "Turn-up %":    total_turn,
         }])
+        # 🛠️ Arrow fix
+        display = _force_str_cols(display, ["SDO"])
+        totals  = _force_str_cols(totals,  ["SDO"])
         display_full = pd.concat([display, totals], ignore_index=True)
 
         st.dataframe(
@@ -1932,7 +1955,7 @@ def render_dashboard():
                      if r["SDO"] == "TOTAL" else [""] * len(r), axis=1)
               .background_gradient(subset=["Ach %"], cmap="RdYlGn", vmin=0, vmax=100)
               .background_gradient(subset=["Turn-up %"], cmap="RdYlGn", vmin=0, vmax=100),
-            use_container_width=True, hide_index=True
+            width='stretch', hide_index=True
         )
 
         st.markdown("### 📊 Target vs Actual")
@@ -1950,7 +1973,7 @@ def render_dashboard():
         fig.update_layout(barmode="group", height=420,
                           xaxis_title="", yaxis_title="Amount (Cr.)")
         apply_theme(fig, height=420)
-        st.plotly_chart(fig, use_container_width=True, key="target_chart")
+        st.plotly_chart(fig, width='stretch', key="target_chart")
 
         st.markdown("### 📈 Turn-up %")
         colors_turn = ["#2E7D32" if p >= 90 else "#F9A825" if p >= 60 else "#C62828"
@@ -1965,7 +1988,7 @@ def render_dashboard():
                        annotation_text="100% Turn-up")
         fig3.update_layout(height=350, xaxis_title="", yaxis_title="Turn-up %")
         apply_theme(fig3, height=350)
-        st.plotly_chart(fig3, use_container_width=True, key="target_turn")
+        st.plotly_chart(fig3, width='stretch', key="target_turn")
 
         csv = display_full.to_csv(index=False).encode("utf-8")
         st.download_button("⬇️ CSV", csv, "target_vs_achievement.csv",
@@ -2047,7 +2070,7 @@ def render_dashboard():
             margin=dict(l=20, r=20, t=40, b=20),
         )
         apply_theme(fig, height=60 + 60 * len(weeks))
-        st.plotly_chart(fig, use_container_width=True, key="daily_calendar_heat")
+        st.plotly_chart(fig, width='stretch', key="daily_calendar_heat")
 
         st.markdown("### 📊 Day-wise Collection")
         fig2 = px.bar(daily, x="_DAY", y="Amount_Cr",
@@ -2057,16 +2080,19 @@ def render_dashboard():
                            yaxis_title="Amount (Cr.)",
                            coloraxis_showscale=False)
         apply_theme(fig2, height=350)
-        st.plotly_chart(fig2, use_container_width=True, key="daily_bar")
+        st.plotly_chart(fig2, width='stretch', key="daily_bar")
 
         with st.expander("📋 Daily Table + CSV download"):
             show = daily[["_DAY", "Amount_Cr", "Txns"]].copy()
             show.columns = ["Day", "Amount (Cr.)", "Txns"]
+            # 🛠️ Arrow fix: Day ko string banao (TOTAL row ke saath mixed type se bachne ke liye)
+            show["Day"] = show["Day"].astype(str)
             total_row = pd.DataFrame([{
                 "Day": "TOTAL",
                 "Amount (Cr.)": round(show["Amount (Cr.)"].sum(), 2),
                 "Txns": int(show["Txns"].sum()),
             }])
+            total_row = _force_str_cols(total_row, ["Day"])
             show_full = pd.concat([show, total_row], ignore_index=True)
 
             st.dataframe(
@@ -2074,7 +2100,7 @@ def render_dashboard():
                   .format({"Amount (Cr.)": "₹ {:,.2f}", "Txns": "{:,}"})
                   .apply(lambda r: ["font-weight: bold; background-color:#1a3a1a; color:white"] * len(r)
                          if r["Day"] == "TOTAL" else [""] * len(r), axis=1),
-                use_container_width=True, hide_index=True
+                width='stretch', hide_index=True
             )
             csv = show_full.to_csv(index=False).encode("utf-8")
             st.download_button("⬇️ Daily CSV", csv,
@@ -2367,7 +2393,7 @@ def render_dashboard():
         pm_list = sorted(df_all["PAYMENT_MODE"].dropna().unique().tolist())
         filters["PAYMENT_MODE"] = st.sidebar.multiselect("💳 Payment Mode", pm_list, key="dash_pm")
 
-    if st.sidebar.button("🔄 Reset Filters", use_container_width=True, key="dash_reset"):
+    if st.sidebar.button("🔄 Reset Filters", width='stretch', key="dash_reset"):
         st.rerun()
 
     df_paid = df_paid_all[df_paid_all["_YM"] == selected_month].copy()
@@ -2489,7 +2515,7 @@ def render_dashboard():
             if not s.empty:
                 fig = px.pie(s, names=CATEGORY_COL, values="Total_Cr", hole=0.4)
                 apply_theme(fig, height=400)
-                st.plotly_chart(fig, use_container_width=True, key="pie_tariff")
+                st.plotly_chart(fig, width='stretch', key="pie_tariff")
 
     with tab2:
         if not df_paid.empty and "LOAD_CATEGORY" in df_paid.columns:
@@ -2504,7 +2530,7 @@ def render_dashboard():
                     fig = px.pie(s, names="LOAD_CATEGORY",
                                  values="Total_Cr", hole=0.4)
                     apply_theme(fig, height=400)
-                    st.plotly_chart(fig, use_container_width=True,
+                    st.plotly_chart(fig, width='stretch',
                                     key="pie_load")
         else:
             st.info("SANCTION_LOAD column nahi mila.")
@@ -2558,19 +2584,22 @@ def render_dashboard():
                 top_show.columns = (["ACCT_ID", "NAME", "Total (Cr.)", "Txns"]
                                     if len(grp) == 2
                                     else ["ACCT_ID", "Total (Cr.)", "Txns"])
+                # 🛠️ Arrow fix
+                top_show = _force_str_cols(top_show, ["ACCT_ID"])
                 total_top = {"ACCT_ID": "TOTAL"}
                 if len(grp) == 2:
                     total_top["NAME"] = ""
                 total_top["Total (Cr.)"] = round(top_show["Total (Cr.)"].sum(), 2)
                 total_top["Txns"] = int(top_show["Txns"].sum())
-                top_show = pd.concat([top_show, pd.DataFrame([total_top])],
+                total_top_df = _force_str_cols(pd.DataFrame([total_top]), ["ACCT_ID"])
+                top_show = pd.concat([top_show, total_top_df],
                                      ignore_index=True)
                 st.dataframe(
                     top_show.style.format({
                         "Total (Cr.)": "₹ {:,.2f}", "Txns": "{:,}"})
                       .apply(lambda r: ["font-weight: bold; background-color:#1a3a1a; color:white"] * len(r)
                              if r["ACCT_ID"] == "TOTAL" else [""] * len(r), axis=1),
-                    use_container_width=True, hide_index=True, height=420
+                    width='stretch', hide_index=True, height=420
                 )
             with c2:
                 st.subheader(f"🔻 Bottom {top_n} Consumers")
@@ -2579,19 +2608,22 @@ def render_dashboard():
                 bot_show.columns = (["ACCT_ID", "NAME", "Total (Cr.)", "Txns"]
                                     if len(grp) == 2
                                     else ["ACCT_ID", "Total (Cr.)", "Txns"])
+                # 🛠️ Arrow fix
+                bot_show = _force_str_cols(bot_show, ["ACCT_ID"])
                 total_bot = {"ACCT_ID": "TOTAL"}
                 if len(grp) == 2:
                     total_bot["NAME"] = ""
                 total_bot["Total (Cr.)"] = round(bot_show["Total (Cr.)"].sum(), 2)
                 total_bot["Txns"] = int(bot_show["Txns"].sum())
-                bot_show = pd.concat([bot_show, pd.DataFrame([total_bot])],
+                total_bot_df = _force_str_cols(pd.DataFrame([total_bot]), ["ACCT_ID"])
+                bot_show = pd.concat([bot_show, total_bot_df],
                                      ignore_index=True)
                 st.dataframe(
                     bot_show.style.format({
                         "Total (Cr.)": "₹ {:,.2f}", "Txns": "{:,}"})
                       .apply(lambda r: ["font-weight: bold; background-color:#1a3a1a; color:white"] * len(r)
                              if r["ACCT_ID"] == "TOTAL" else [""] * len(r), axis=1),
-                    use_container_width=True, hide_index=True, height=420
+                    width='stretch', hide_index=True, height=420
                 )
             with st.expander("⬇️ Download consumers list (CSV)"):
                 full = cons.sort_values("Total_Paid", ascending=False).copy()
@@ -2600,12 +2632,15 @@ def render_dashboard():
                 full_show.columns = (["ACCT_ID", "NAME", "Total (Cr.)", "Txns"]
                                      if len(grp) == 2
                                      else ["ACCT_ID", "Total (Cr.)", "Txns"])
+                # 🛠️ Arrow fix
+                full_show = _force_str_cols(full_show, ["ACCT_ID"])
                 total_all = {"ACCT_ID": "TOTAL"}
                 if len(grp) == 2:
                     total_all["NAME"] = ""
                 total_all["Total (Cr.)"] = round(full_show["Total (Cr.)"].sum(), 2)
                 total_all["Txns"] = int(full_show["Txns"].sum())
-                full_show = pd.concat([full_show, pd.DataFrame([total_all])],
+                total_all_df = _force_str_cols(pd.DataFrame([total_all]), ["ACCT_ID"])
+                full_show = pd.concat([full_show, total_all_df],
                                       ignore_index=True)
                 csv = full_show.to_csv(index=False).encode("utf-8")
                 st.download_button("Consumers CSV", csv,
