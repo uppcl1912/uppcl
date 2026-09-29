@@ -1,8 +1,6 @@
 streamlit
 pandas
 plotly
-openpyxl
-xlsxwriter
 reportlab
-matplotlib==3.10.7
-pyarrow==24.0.0
+xlsxwriter
+openpyxl
